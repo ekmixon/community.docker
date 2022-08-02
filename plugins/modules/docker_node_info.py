@@ -120,8 +120,9 @@ def get_node_facts(client):
         nodes = [nodes]
 
     for next_node_name in nodes:
-        next_node_info = client.get_node_inspect(node_id=next_node_name, skip_missing=True)
-        if next_node_info:
+        if next_node_info := client.get_node_inspect(
+            node_id=next_node_name, skip_missing=True
+        ):
             results.append(next_node_info)
     return results
 

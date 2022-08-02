@@ -154,7 +154,7 @@ class DockerVolumeManager(object):
         }
         self.diff = self.client.module._diff
         self.diff_tracker = DifferenceTracker()
-        self.diff_result = dict()
+        self.diff_result = {}
 
         self.existing_volume = self.get_existing_volume()
 
@@ -178,11 +178,14 @@ class DockerVolumeManager(object):
         if volumes[u'Volumes'] is None:
             return None
 
-        for volume in volumes[u'Volumes']:
-            if volume['Name'] == self.parameters.volume_name:
-                return volume
-
-        return None
+        return next(
+            (
+                volume
+                for volume in volumes[u'Volumes']
+                if volume['Name'] == self.parameters.volume_name
+            ),
+            None,
+        )
 
     def has_different_config(self):
         """
@@ -202,38 +205,48 @@ class DockerVolumeManager(object):
                 for key, value in iteritems(self.parameters.driver_options):
                     if (not self.existing_volume['Options'].get(key) or
                             value != self.existing_volume['Options'][key]):
-                        differences.add('driver_options.%s' % key,
-                                        parameter=value,
-                                        active=self.existing_volume['Options'].get(key))
+                        differences.add(
+                            f'driver_options.{key}',
+                            parameter=value,
+                            active=self.existing_volume['Options'].get(key),
+                        )
+
         if self.parameters.labels:
             existing_labels = self.existing_volume.get('Labels', {})
             for label in self.parameters.labels:
                 if existing_labels.get(label) != self.parameters.labels.get(label):
-                    differences.add('labels.%s' % label,
-                                    parameter=self.parameters.labels.get(label),
-                                    active=existing_labels.get(label))
+                    differences.add(
+                        f'labels.{label}',
+                        parameter=self.parameters.labels.get(label),
+                        active=existing_labels.get(label),
+                    )
+
 
         return differences
 
     def create_volume(self):
-        if not self.existing_volume:
-            if not self.check_mode:
-                try:
-                    params = dict(
-                        driver=self.parameters.driver,
-                        driver_opts=self.parameters.driver_options,
-                    )
+        if self.existing_volume:
+            return
+        if not self.check_mode:
+            try:
+                params = dict(
+                    driver=self.parameters.driver,
+                    driver_opts=self.parameters.driver_options,
+                )
 
-                    if self.parameters.labels is not None:
-                        params['labels'] = self.parameters.labels
+                if self.parameters.labels is not None:
+                    params['labels'] = self.parameters.labels
 
-                    resp = self.client.create_volume(self.parameters.volume_name, **params)
-                    self.existing_volume = self.client.inspect_volume(resp['Name'])
-                except APIError as e:
-                    self.client.fail(to_native(e))
+                resp = self.client.create_volume(self.parameters.volume_name, **params)
+                self.existing_volume = self.client.inspect_volume(resp['Name'])
+            except APIError as e:
+                self.client.fail(to_native(e))
 
-            self.results['actions'].append("Created volume %s with driver %s" % (self.parameters.volume_name, self.parameters.driver))
-            self.results['changed'] = True
+        self.results['actions'].append(
+            f"Created volume {self.parameters.volume_name} with driver {self.parameters.driver}"
+        )
+
+        self.results['changed'] = True
 
     def remove_volume(self):
         if self.existing_volume:
@@ -243,7 +256,7 @@ class DockerVolumeManager(object):
                 except APIError as e:
                     self.client.fail(to_native(e))
 
-            self.results['actions'].append("Removed volume %s" % self.parameters.volume_name)
+            self.results['actions'].append(f"Removed volume {self.parameters.volume_name}")
             self.results['changed'] = True
 
     def present(self):

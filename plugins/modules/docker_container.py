@@ -1246,10 +1246,7 @@ except Exception:
 
 
 def shell_join(parts):
-    if getattr(shlex, 'quote', None):
-        quote = shlex.quote
-    else:
-        quote = pipes.quote
+    quote = shlex.quote if getattr(shlex, 'quote', None) else pipes.quote
     return ' '.join([quote(part) for part in parts])
 
 
@@ -1263,10 +1260,26 @@ REQUIRES_CONVERSION_TO_BYTES = [
 
 
 def is_volume_permissions(mode):
-    for part in mode.split(','):
-        if part not in ('rw', 'ro', 'z', 'Z', 'consistent', 'delegated', 'cached', 'rprivate', 'private', 'rshared', 'shared', 'rslave', 'slave', 'nocopy'):
-            return False
-    return True
+    return all(
+        part
+        in (
+            'rw',
+            'ro',
+            'z',
+            'Z',
+            'consistent',
+            'delegated',
+            'cached',
+            'rprivate',
+            'private',
+            'rshared',
+            'shared',
+            'rslave',
+            'slave',
+            'nocopy',
+        )
+        for part in mode.split(',')
+    )
 
 
 def parse_port_range(range_or_port, client):

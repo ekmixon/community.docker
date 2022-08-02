@@ -133,10 +133,9 @@ def main():
         container = client.get_container(client.module.params['name'])
 
         client.module.exit_json(
-            changed=False,
-            exists=(True if container else False),
-            container=container,
+            changed=False, exists=bool(container), container=container
         )
+
     except DockerException as e:
         client.fail('An unexpected docker error occurred: {0}'.format(to_native(e)), exception=traceback.format_exc())
     except RequestException as e:

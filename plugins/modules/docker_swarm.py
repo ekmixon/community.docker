@@ -328,17 +328,17 @@ class TaskParameters(DockerBaseClass):
     def update_from_swarm_info(self, swarm_info):
         spec = swarm_info['Spec']
 
-        ca_config = spec.get('CAConfig') or dict()
+        ca_config = spec.get('CAConfig') or {}
         if self.node_cert_expiry is None:
             self.node_cert_expiry = ca_config.get('NodeCertExpiry')
         if self.ca_force_rotate is None:
             self.ca_force_rotate = ca_config.get('ForceRotate')
 
-        dispatcher = spec.get('Dispatcher') or dict()
+        dispatcher = spec.get('Dispatcher') or {}
         if self.dispatcher_heartbeat_period is None:
             self.dispatcher_heartbeat_period = dispatcher.get('HeartbeatPeriod')
 
-        raft = spec.get('Raft') or dict()
+        raft = spec.get('Raft') or {}
         if self.snapshot_interval is None:
             self.snapshot_interval = raft.get('SnapshotInterval')
         if self.keep_old_snapshots is None:
@@ -350,11 +350,11 @@ class TaskParameters(DockerBaseClass):
         if self.election_tick is None:
             self.election_tick = raft.get('ElectionTick')
 
-        orchestration = spec.get('Orchestration') or dict()
+        orchestration = spec.get('Orchestration') or {}
         if self.task_history_retention_limit is None:
             self.task_history_retention_limit = orchestration.get('TaskHistoryRetentionLimit')
 
-        encryption_config = spec.get('EncryptionConfig') or dict()
+        encryption_config = spec.get('EncryptionConfig') or {}
         if self.autolock_managers is None:
             self.autolock_managers = encryption_config.get('AutoLockManagers')
 
@@ -385,7 +385,7 @@ class TaskParameters(DockerBaseClass):
             autolock_managers='autolock_managers',
             log_driver='log_driver',
         )
-        params = dict()
+        params = {}
         for dest, source in assign.items():
             if not client.option_minimal_versions[source]['supported']:
                 continue
@@ -446,7 +446,7 @@ class SwarmManager(DockerBaseClass):
         choice_map.get(self.state)()
 
         if self.client.module._diff or self.parameters.debug:
-            diff = dict()
+            diff = {}
             diff['before'], diff['after'] = self.differences.get_before_after()
             self.results['diff'] = diff
 
@@ -497,15 +497,17 @@ class SwarmManager(DockerBaseClass):
             try:
                 self.client.init_swarm(**init_arguments)
             except APIError as exc:
-                self.client.fail("Can not create a new Swarm Cluster: %s" % to_native(exc))
+                self.client.fail(f"Can not create a new Swarm Cluster: {to_native(exc)}")
 
-        if not self.client.check_if_swarm_manager():
-            if not self.check_mode:
-                self.client.fail("Swarm not created or other error!")
+        if not self.client.check_if_swarm_manager() and not self.check_mode:
+            self.client.fail("Swarm not created or other error!")
 
         self.created = True
         self.inspect_swarm()
-        self.results['actions'].append("New Swarm cluster created: %s" % (self.swarm_info.get('ID')))
+        self.results['actions'].append(
+            f"New Swarm cluster created: {self.swarm_info.get('ID')}"
+        )
+
         self.differences.add('state', parameter='present', active='absent')
         self.results['changed'] = True
         self.results['swarm_facts'] = {
@@ -533,7 +535,7 @@ class SwarmManager(DockerBaseClass):
                     rotate_worker_token=self.parameters.rotate_worker_token,
                     rotate_manager_token=self.parameters.rotate_manager_token)
         except APIError as exc:
-            self.client.fail("Can not update a Swarm Cluster: %s" % to_native(exc))
+            self.client.fail(f"Can not update a Swarm Cluster: {to_native(exc)}")
             return
 
         self.inspect_swarm()
@@ -550,7 +552,7 @@ class SwarmManager(DockerBaseClass):
                     remote_addrs=self.parameters.remote_addrs, join_token=self.parameters.join_token,
                     listen_addr=self.parameters.listen_addr, advertise_addr=self.parameters.advertise_addr)
             except APIError as exc:
-                self.client.fail("Can not join the Swarm Cluster: %s" % to_native(exc))
+                self.client.fail(f"Can not join the Swarm Cluster: {to_native(exc)}")
         self.results['actions'].append("New node is added to swarm cluster")
         self.differences.add('joined', parameter=True, active=False)
         self.results['changed'] = True
@@ -563,7 +565,10 @@ class SwarmManager(DockerBaseClass):
             try:
                 self.client.leave_swarm(force=self.force)
             except APIError as exc:
-                self.client.fail("This node can not leave the Swarm Cluster: %s" % to_native(exc))
+                self.client.fail(
+                    f"This node can not leave the Swarm Cluster: {to_native(exc)}"
+                )
+
         self.results['actions'].append("Node has left the swarm cluster")
         self.differences.add('joined', parameter='absent', active='present')
         self.results['changed'] = True
@@ -584,7 +589,10 @@ class SwarmManager(DockerBaseClass):
             try:
                 self.client.remove_node(node_id=self.node_id, force=self.force)
             except APIError as exc:
-                self.client.fail("Can not remove the node from the Swarm Cluster: %s" % to_native(exc))
+                self.client.fail(
+                    f"Can not remove the node from the Swarm Cluster: {to_native(exc)}"
+                )
+
         self.results['actions'].append("Node is removed from swarm cluster.")
         self.differences.add('joined', parameter=False, active=True)
         self.results['changed'] = True

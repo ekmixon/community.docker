@@ -128,11 +128,7 @@ def main():
     try:
         network = client.get_network(client.module.params['name'])
 
-        client.module.exit_json(
-            changed=False,
-            exists=(True if network else False),
-            network=network,
-        )
+        client.module.exit_json(changed=False, exists=bool(network), network=network)
     except DockerException as e:
         client.fail('An unexpected docker error occurred: {0}'.format(to_native(e)), exception=traceback.format_exc())
     except RequestException as e:

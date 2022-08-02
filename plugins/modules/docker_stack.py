@@ -161,11 +161,7 @@ def docker_service_inspect(module, service_name):
                                        "service",
                                        "inspect",
                                        service_name])
-    if rc != 0:
-        return None
-    else:
-        ret = json.loads(out)[0]['Spec']
-        return ret
+    return None if rc != 0 else json.loads(out)[0]['Spec']
 
 
 def docker_stack_deploy(module, stack_name, compose_files):
@@ -186,10 +182,10 @@ def docker_stack_deploy(module, stack_name, compose_files):
 
 
 def docker_stack_inspect(module, stack_name):
-    ret = {}
-    for service_name in docker_stack_services(module, stack_name):
-        ret[service_name] = docker_service_inspect(module, service_name)
-    return ret
+    return {
+        service_name: docker_service_inspect(module, service_name)
+        for service_name in docker_stack_services(module, stack_name)
+    }
 
 
 def docker_stack_rm(module, stack_name, retries, interval):
@@ -238,7 +234,7 @@ def main():
                                   "containing at least one element"))
 
         compose_files = []
-        for i, compose_def in enumerate(compose):
+        for compose_def in compose:
             if isinstance(compose_def, dict):
                 compose_file_fd, compose_file = tempfile.mkstemp()
                 module.add_cleanup_file(compose_file)

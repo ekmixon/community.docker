@@ -185,10 +185,7 @@ def main():
     if stdin is not None and client.module.params['stdin_add_newline']:
         stdin += '\n'
 
-    selectors = None
-    if stdin:
-        selectors = find_selectors(client.module)
-
+    selectors = find_selectors(client.module) if stdin else None
     try:
         exec_data = client.exec_create(
             container,

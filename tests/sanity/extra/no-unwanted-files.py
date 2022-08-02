@@ -36,7 +36,7 @@ def main():
         ext = os.path.splitext(path)[1]
 
         if ext not in allowed_extensions:
-            print('%s: extension must be one of: %s' % (path, ', '.join(allowed_extensions)))
+            print(f"{path}: extension must be one of: {', '.join(allowed_extensions)}")
 
 
 if __name__ == '__main__':

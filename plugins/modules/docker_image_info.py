@@ -191,7 +191,7 @@ class ImageManager(DockerBaseClass):
         self.client = client
         self.results = results
         self.name = self.client.module.params.get('name')
-        self.log("Gathering facts for images: %s" % (str(self.name)))
+        self.log(f"Gathering facts for images: {str(self.name)}")
 
         if self.name:
             self.results['images'] = self.get_facts()
@@ -216,13 +216,13 @@ class ImageManager(DockerBaseClass):
 
         for name in names:
             if is_image_name_id(name):
-                self.log('Fetching image %s (ID)' % (name))
+                self.log(f'Fetching image {name} (ID)')
                 image = self.client.find_image_by_id(name, accept_missing_image=True)
             else:
                 repository, tag = utils.parse_repository_tag(name)
                 if not tag:
                     tag = 'latest'
-                self.log('Fetching image %s:%s' % (repository, tag))
+                self.log(f'Fetching image {repository}:{tag}')
                 image = self.client.find_image(name=repository, tag=tag)
             if image:
                 results.append(image)
@@ -237,7 +237,7 @@ class ImageManager(DockerBaseClass):
             except NotFound:
                 pass
             except Exception as exc:
-                self.fail("Error inspecting image %s - %s" % (image['Id'], to_native(exc)))
+                self.fail(f"Error inspecting image {image['Id']} - {to_native(exc)}")
             results.append(inspection)
         return results
 

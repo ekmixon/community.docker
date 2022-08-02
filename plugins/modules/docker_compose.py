@@ -595,10 +595,7 @@ def attempt_extract_errors(exc_str, stdout, stderr):
 
 
 def get_failure_info(exc, out_name, err_name=None, msg_format='%s'):
-    if err_name is None:
-        stderr = []
-    else:
-        stderr = get_redirected_output(err_name)
+    stderr = [] if err_name is None else get_redirected_output(err_name)
     stdout = get_redirected_output(out_name)
 
     reason = attempt_extract_errors(str(exc), stdout, stderr)
@@ -642,8 +639,8 @@ class ContainerManager(DockerBaseClass):
         if not self.debug:
             self.debug = client.module._debug
 
-        self.options = dict()
-        self.options.update(self._get_auth_options())
+        self.options = {}
+        self.options |= self._get_auth_options()
         self.options[u'--skip-hostname-check'] = (not self.hostname_check)
 
         if self.project_name:
@@ -659,8 +656,10 @@ class ContainerManager(DockerBaseClass):
             self.options[u'--profile'] = self.profiles
 
         if not HAS_COMPOSE:
-            self.client.fail("Unable to load docker-compose. Try `pip install docker-compose`. Error: %s" %
-                             to_native(HAS_COMPOSE_EXC))
+            self.client.fail(
+                f"Unable to load docker-compose. Try `pip install docker-compose`. Error: {to_native(HAS_COMPOSE_EXC)}"
+            )
+
 
         if LooseVersion(compose_version) < LooseVersion(MINIMUM_COMPOSE_VERSION):
             self.client.fail("Found docker-compose version %s. Minimum required version is %s. "
@@ -675,7 +674,10 @@ class ContainerManager(DockerBaseClass):
 
         if self.definition:
             if not HAS_YAML:
-                self.client.fail("Unable to load yaml. Try `pip install PyYAML`. Error: %s" % to_native(HAS_YAML_EXC))
+                self.client.fail(
+                    f"Unable to load yaml. Try `pip install PyYAML`. Error: {to_native(HAS_YAML_EXC)}"
+                )
+
 
             if not self.project_name:
                 self.client.fail("Parameter error - project_name required when providing definition.")
@@ -688,19 +690,19 @@ class ContainerManager(DockerBaseClass):
                 with open(compose_file, 'w') as f:
                     f.write(yaml.dump(self.definition, default_flow_style=False))
             except Exception as exc:
-                self.client.fail("Error writing to %s - %s" % (compose_file, to_native(exc)))
+                self.client.fail(f"Error writing to {compose_file} - {to_native(exc)}")
         else:
             if not self.project_src:
                 self.client.fail("Parameter error - project_src required.")
 
         try:
-            self.log("project_src: %s" % self.project_src)
+            self.log(f"project_src: {self.project_src}")
             self.project = project_from_options(self.project_src, self.options)
         except Exception as exc:
-            self.client.fail("Configuration error - %s" % to_native(exc))
+            self.client.fail(f"Configuration error - {to_native(exc)}")
 
     def exec_module(self):
-        result = dict()
+        result = {}
 
         if self.state == 'present':
             result = self.cmd_up()
@@ -709,9 +711,9 @@ class ContainerManager(DockerBaseClass):
 
         if self.definition:
             compose_file = os.path.join(self.project_src, "docker-compose.yml")
-            self.log("removing %s" % compose_file)
+            self.log(f"removing {compose_file}")
             os.remove(compose_file)
-            self.log("removing %s" % self.project_src)
+            self.log(f"removing {self.project_src}")
             os.rmdir(self.project_src)
 
         if not self.check_mode and not self.debug and result.get('actions'):
@@ -720,11 +722,10 @@ class ContainerManager(DockerBaseClass):
         return result
 
     def _get_auth_options(self):
-        options = dict()
+        options = {}
         for key, value in self.client.auth_params.items():
             if value is not None:
-                option = AUTH_PARAM_MAPPING.get(key)
-                if option:
+                if option := AUTH_PARAM_MAPPING.get(key):
                     options[option] = value
         return options
 

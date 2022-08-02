@@ -198,12 +198,12 @@ class SecretManager(DockerBaseClass):
         try:
             secrets = self.client.secrets(filters={'name': self.name})
         except APIError as exc:
-            self.client.fail("Error accessing secret %s: %s" % (self.name, to_native(exc)))
+            self.client.fail(f"Error accessing secret {self.name}: {to_native(exc)}")
 
-        for secret in secrets:
-            if secret['Spec']['Name'] == self.name:
-                return secret
-        return None
+        return next(
+            (secret for secret in secrets if secret['Spec']['Name'] == self.name),
+            None,
+        )
 
     def create_secret(self):
         ''' Create a new secret '''
@@ -213,13 +213,13 @@ class SecretManager(DockerBaseClass):
             'ansible_key': self.data_key
         }
         if self.labels:
-            labels.update(self.labels)
+            labels |= self.labels
 
         try:
             if not self.check_mode:
                 secret_id = self.client.create_secret(self.name, self.data, labels=labels)
         except APIError as exc:
-            self.client.fail("Error creating secret: %s" % to_native(exc))
+            self.client.fail(f"Error creating secret: {to_native(exc)}")
 
         if isinstance(secret_id, dict):
             secret_id = secret_id['ID']
@@ -228,17 +228,15 @@ class SecretManager(DockerBaseClass):
 
     def present(self):
         ''' Handles state == 'present', creating or updating the secret '''
-        secret = self.get_secret()
-        if secret:
+        if secret := self.get_secret():
             self.results['secret_id'] = secret['ID']
             data_changed = False
             attrs = secret.get('Spec', {})
             if attrs.get('Labels', {}).get('ansible_key'):
                 if attrs['Labels']['ansible_key'] != self.data_key:
                     data_changed = True
-            else:
-                if not self.force:
-                    self.client.module.warn("'ansible_key' label not found. Secret will not be changed unless the force parameter is set to 'yes'")
+            elif not self.force:
+                self.client.module.warn("'ansible_key' label not found. Secret will not be changed unless the force parameter is set to 'yes'")
             labels_changed = not compare_generic(self.labels, attrs.get('Labels'), 'allow_more_present', 'dict')
             if data_changed or labels_changed or self.force:
                 # if something changed or force, delete and re-create the secret
@@ -252,13 +250,12 @@ class SecretManager(DockerBaseClass):
 
     def absent(self):
         ''' Handles state == 'absent', removing the secret '''
-        secret = self.get_secret()
-        if secret:
+        if secret := self.get_secret():
             try:
                 if not self.check_mode:
                     self.client.remove_secret(secret['ID'])
             except APIError as exc:
-                self.client.fail("Error removing secret %s: %s" % (self.name, to_native(exc)))
+                self.client.fail(f"Error removing secret {self.name}: {to_native(exc)}")
             self.results['changed'] = True
 
 

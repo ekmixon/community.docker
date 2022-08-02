@@ -227,7 +227,7 @@ def main():
         client.fail(msg % (docker_version, cache_min_version))
 
     try:
-        result = dict()
+        result = {}
 
         if client.module.params['containers']:
             filters = clean_dict_booleans_for_docker_api(client.module.params.get('containers_filters'))

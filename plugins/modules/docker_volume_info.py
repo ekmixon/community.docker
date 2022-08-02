@@ -97,7 +97,7 @@ def get_existing_volume(client, volume_name):
     except NotFound as dummy:
         return None
     except Exception as exc:
-        client.fail("Error inspecting volume: %s" % to_native(exc))
+        client.fail(f"Error inspecting volume: {to_native(exc)}")
 
 
 def main():
@@ -115,11 +115,7 @@ def main():
     try:
         volume = get_existing_volume(client, client.module.params['name'])
 
-        client.module.exit_json(
-            changed=False,
-            exists=(True if volume else False),
-            volume=volume,
-        )
+        client.module.exit_json(changed=False, exists=bool(volume), volume=volume)
     except DockerException as e:
         client.fail('An unexpected docker error occurred: {0}'.format(to_native(e)), exception=traceback.format_exc())
     except RequestException as e:

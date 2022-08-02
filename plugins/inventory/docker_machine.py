@@ -145,10 +145,9 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         # with the same name and value but with a dm_ name prefix.
         vars = []
         for line in env_lines:
-            match = re.search('(DOCKER_[^=]+)="([^"]+)"', line)
-            if match:
-                env_var_name = match.group(1)
-                env_var_value = match.group(2)
+            if match := re.search('(DOCKER_[^=]+)="([^"]+)"', line):
+                env_var_name = match[1]
+                env_var_value = match[2]
                 vars.append((env_var_name, env_var_value))
 
         return vars
@@ -220,10 +219,9 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
                 # check for valid ip address from inspect output, else explicitly use ip command to find host ip address
                 # this works around an issue seen with Google Compute Platform where the IP address was not available
                 # via the 'inspect' subcommand but was via the 'ip' subcomannd.
-                if self.node_attrs['Driver']['IPAddress']:
-                    ip_addr = self.node_attrs['Driver']['IPAddress']
-                else:
-                    ip_addr = self._ip_addr_docker_machine_host(self.node)
+                ip_addr = self.node_attrs['Driver'][
+                    'IPAddress'
+                ] or self._ip_addr_docker_machine_host(self.node)
 
                 # set standard Ansible remote host connection settings to details captured from `docker-machine`
                 # see: https://docs.ansible.com/ansible/latest/user_guide/intro_inventory.html
@@ -256,8 +254,10 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
                 self._add_host_to_keyed_groups(self.get_option('keyed_groups'), self.node_attrs, machine_name, strict=strict)
 
         except Exception as e:
-            raise AnsibleError('Unable to fetch hosts from Docker Machine, this was the original exception: %s' %
-                               to_native(e), orig_exc=e)
+            raise AnsibleError(
+                f'Unable to fetch hosts from Docker Machine, this was the original exception: {to_native(e)}',
+                orig_exc=e,
+            )
 
     def verify_file(self, path):
         """Return the possibility of a file being consumable by this plugin."""
