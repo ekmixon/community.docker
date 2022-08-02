@@ -100,11 +100,14 @@ DOCKER_COMMON_ARGS = dict(
     debug=dict(type='bool', default=False)
 )
 
-DOCKER_COMMON_ARGS_VARS = dict([
-    [option_name, 'ansible_docker_%s' % option_name]
-    for option_name in DOCKER_COMMON_ARGS
-    if option_name != 'debug'
-])
+DOCKER_COMMON_ARGS_VARS = dict(
+    [
+        [option_name, f'ansible_docker_{option_name}']
+        for option_name in DOCKER_COMMON_ARGS
+        if option_name != 'debug'
+    ]
+)
+
 
 DOCKER_MUTUALLY_EXCLUSIVE = []
 
@@ -135,18 +138,16 @@ if not HAS_DOCKER_PY:
 
 def is_image_name_id(name):
     """Check whether the given image name is in fact an image ID (hash)."""
-    if re.match('^sha256:[0-9a-fA-F]{64}$', name):
-        return True
-    return False
+    return bool(re.match('^sha256:[0-9a-fA-F]{64}$', name))
 
 
 def is_valid_tag(tag, allow_empty=False):
     """Check whether the given string is a valid docker tag name."""
-    if not tag:
-        return allow_empty
-    # See here ("Extended description") for a definition what tags can be:
-    # https://docs.docker.com/engine/reference/commandline/tag/
-    return bool(re.match('^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$', tag))
+    return (
+        bool(re.match('^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$', tag))
+        if tag
+        else allow_empty
+    )
 
 
 def sanitize_result(data):
@@ -160,7 +161,7 @@ def sanitize_result(data):
     to a list.
     """
     if isinstance(data, dict):
-        return dict((k, sanitize_result(v)) for k, v in data.items())
+        return {k: sanitize_result(v) for k, v in data.items()}
     elif isinstance(data, (list, tuple)):
         return [sanitize_result(v) for v in data]
     else:
@@ -204,10 +205,9 @@ def update_tls_hostname(result, old_behavior=False, deprecate_function=None, use
 
 def _get_tls_config(fail_function, **kwargs):
     try:
-        tls_config = TLSConfig(**kwargs)
-        return tls_config
+        return TLSConfig(**kwargs)
     except TLSParameterError as exc:
-        fail_function("TLS config error: %s" % exc)
+        fail_function(f"TLS config error: {exc}")
 
 
 def is_using_tls(auth):
@@ -284,13 +284,19 @@ class AnsibleDockerClientBase(Client):
             if NEEDS_DOCKER_PY2:
                 msg = missing_required_lib("Docker SDK for Python: docker above 5.0.0 (Python >= 3.6) or "
                                            "docker before 5.0.0 (Python 2.7)")
-                msg = msg + ", for example via `pip install docker` (Python >= 3.6) or " \
+                msg = (
+                    f"{msg}, for example via `pip install docker` (Python >= 3.6) or "
                     + "`pip install docker==4.4.4` (Python 2.7). The error was: %s"
+                )
+
             else:
                 msg = missing_required_lib("Docker SDK for Python: docker above 5.0.0 (Python >= 3.6) or "
                                            "docker before 5.0.0 (Python 2.7) or docker-py (Python 2.6)")
-                msg = msg + ", for example via `pip install docker` (Python >= 3.6) or `pip install docker==4.4.4` (Python 2.7) " \
+                msg = (
+                    f"{msg}, for example via `pip install docker` (Python >= 3.6) or `pip install docker==4.4.4` (Python 2.7) "
                     + "or `pip install docker-py` (Python 2.6). The error was: %s"
+                )
+
             self.fail(msg % HAS_DOCKER_ERROR, exception=HAS_DOCKER_TRACEBACK)
 
         if self.docker_py_version < LooseVersion(min_docker_version):
@@ -311,14 +317,18 @@ class AnsibleDockerClientBase(Client):
             super(AnsibleDockerClientBase, self).__init__(**self._connect_params)
             self.docker_api_version_str = self.version()['ApiVersion']
         except APIError as exc:
-            self.fail("Docker API error: %s" % exc)
+            self.fail(f"Docker API error: {exc}")
         except Exception as exc:
-            self.fail("Error connecting: %s" % exc)
+            self.fail(f"Error connecting: {exc}")
 
         self.docker_api_version = LooseVersion(self.docker_api_version_str)
-        if min_docker_api_version is not None:
-            if self.docker_api_version < LooseVersion(min_docker_api_version):
-                self.fail('Docker API version is %s. Minimum version required is %s.' % (self.docker_api_version_str, min_docker_api_version))
+        if (
+            min_docker_api_version is not None
+            and self.docker_api_version < LooseVersion(min_docker_api_version)
+        ):
+            self.fail(
+                f'Docker API version is {self.docker_api_version_str}. Minimum version required is {min_docker_api_version}.'
+            )
 
     def log(self, msg, pretty_print=False):
         pass
@@ -343,10 +353,7 @@ class AnsibleDockerClientBase(Client):
             # take module parameter value
             if param_value in BOOLEANS_TRUE:
                 return True
-            if param_value in BOOLEANS_FALSE:
-                return False
-            return param_value
-
+            return False if param_value in BOOLEANS_FALSE else param_value
         if env_variable is not None:
             env_value = os.environ.get(env_variable)
             if env_value is not None:
@@ -359,10 +366,7 @@ class AnsibleDockerClientBase(Client):
                     return os.path.join(env_value, 'key.pem')
                 if env_value in BOOLEANS_TRUE:
                     return True
-                if env_value in BOOLEANS_FALSE:
-                    return False
-                return env_value
-
+                return False if env_value in BOOLEANS_FALSE else env_value
         # take the default
         return default_value
 
@@ -379,7 +383,7 @@ class AnsibleDockerClientBase(Client):
 
         client_params = self._get_params()
 
-        params = dict()
+        params = {}
         for key in DOCKER_COMMON_ARGS:
             params[key] = client_params.get(key)
 
@@ -410,25 +414,29 @@ class AnsibleDockerClientBase(Client):
         return result
 
     def _handle_ssl_error(self, error):
-        match = re.match(r"hostname.*doesn\'t match (\'.*\')", str(error))
-        if match:
-            self.fail("You asked for verification that Docker daemons certificate's hostname matches %s. "
-                      "The actual certificate's hostname is %s. Most likely you need to set DOCKER_TLS_HOSTNAME "
-                      "or pass `tls_hostname` with a value of %s. You may also use TLS without verification by "
-                      "setting the `tls` parameter to true."
-                      % (self.auth_params['tls_hostname'], match.group(1), match.group(1)))
-        self.fail("SSL Exception: %s" % (error))
+        if match := re.match(r"hostname.*doesn\'t match (\'.*\')", str(error)):
+            self.fail(
+                (
+                    "You asked for verification that Docker daemons certificate's hostname matches %s. "
+                    "The actual certificate's hostname is %s. Most likely you need to set DOCKER_TLS_HOSTNAME "
+                    "or pass `tls_hostname` with a value of %s. You may also use TLS without verification by "
+                    "setting the `tls` parameter to true."
+                    % (self.auth_params['tls_hostname'], match[1], match[1])
+                )
+            )
+
+        self.fail(f"SSL Exception: {error}")
 
     def get_container_by_id(self, container_id):
         try:
-            self.log("Inspecting container Id %s" % container_id)
+            self.log(f"Inspecting container Id {container_id}")
             result = self.inspect_container(container=container_id)
             self.log("Completed container inspection")
             return result
         except NotFound as dummy:
             return None
         except Exception as exc:
-            self.fail("Error inspecting container: %s" % exc)
+            self.fail(f"Error inspecting container: {exc}")
 
     def get_container(self, name=None):
         '''
@@ -439,12 +447,12 @@ class AnsibleDockerClientBase(Client):
 
         search_name = name
         if not name.startswith('/'):
-            search_name = '/' + name
+            search_name = f'/{name}'
 
         result = None
         try:
             for container in self.containers(all=True):
-                self.log("testing container: %s" % (container['Names']))
+                self.log(f"testing container: {container['Names']}")
                 if isinstance(container['Names'], list) and search_name in container['Names']:
                     result = container
                     break
@@ -457,12 +465,9 @@ class AnsibleDockerClientBase(Client):
         except SSLError as exc:
             self._handle_ssl_error(exc)
         except Exception as exc:
-            self.fail("Error retrieving container list: %s" % exc)
+            self.fail(f"Error retrieving container list: {exc}")
 
-        if result is None:
-            return None
-
-        return self.get_container_by_id(result['Id'])
+        return None if result is None else self.get_container_by_id(result['Id'])
 
     def get_network(self, name=None, network_id=None):
         '''
@@ -476,7 +481,7 @@ class AnsibleDockerClientBase(Client):
         if network_id is None:
             try:
                 for network in self.networks():
-                    self.log("testing network: %s" % (network['Name']))
+                    self.log(f"testing network: {network['Name']}")
                     if name == network['Name']:
                         result = network
                         break
@@ -486,20 +491,20 @@ class AnsibleDockerClientBase(Client):
             except SSLError as exc:
                 self._handle_ssl_error(exc)
             except Exception as exc:
-                self.fail("Error retrieving network list: %s" % exc)
+                self.fail(f"Error retrieving network list: {exc}")
 
         if result is not None:
             network_id = result['Id']
 
         if network_id is not None:
             try:
-                self.log("Inspecting network Id %s" % network_id)
+                self.log(f"Inspecting network Id {network_id}")
                 result = self.inspect_network(network_id)
                 self.log("Completed network inspection")
             except NotFound as dummy:
                 return None
             except Exception as exc:
-                self.fail("Error inspecting network: %s" % exc)
+                self.fail(f"Error inspecting network: {exc}")
 
         return result
 
@@ -510,7 +515,7 @@ class AnsibleDockerClientBase(Client):
         if not name:
             return None
 
-        self.log("Find image %s:%s" % (name, tag))
+        self.log(f"Find image {name}:{tag}")
         images = self._image_lookup(name, tag)
         if not images:
             # In API <= 1.20 seeing 'docker.io/<name>' as the name of images pulled from docker hub
@@ -518,34 +523,34 @@ class AnsibleDockerClientBase(Client):
             if registry == 'docker.io':
                 # If docker.io is explicitly there in name, the image
                 # isn't found in some cases (#41509)
-                self.log("Check for docker.io image: %s" % repo_name)
+                self.log(f"Check for docker.io image: {repo_name}")
                 images = self._image_lookup(repo_name, tag)
                 if not images and repo_name.startswith('library/'):
                     # Sometimes library/xxx images are not found
                     lookup = repo_name[len('library/'):]
-                    self.log("Check for docker.io image: %s" % lookup)
+                    self.log(f"Check for docker.io image: {lookup}")
                     images = self._image_lookup(lookup, tag)
                 if not images:
                     # Last case: if docker.io wasn't there, it can be that
                     # the image wasn't found either (#15586)
-                    lookup = "%s/%s" % (registry, repo_name)
-                    self.log("Check for docker.io image: %s" % lookup)
+                    lookup = f"{registry}/{repo_name}"
+                    self.log(f"Check for docker.io image: {lookup}")
                     images = self._image_lookup(lookup, tag)
 
         if len(images) > 1:
-            self.fail("Registry returned more than one result for %s:%s" % (name, tag))
+            self.fail(f"Registry returned more than one result for {name}:{tag}")
 
         if len(images) == 1:
             try:
                 inspection = self.inspect_image(images[0]['Id'])
             except NotFound:
-                self.log("Image %s:%s not found." % (name, tag))
+                self.log(f"Image {name}:{tag} not found.")
                 return None
             except Exception as exc:
-                self.fail("Error inspecting image %s:%s - %s" % (name, tag, str(exc)))
+                self.fail(f"Error inspecting image {name}:{tag} - {str(exc)}")
             return inspection
 
-        self.log("Image %s:%s not found." % (name, tag))
+        self.log(f"Image {name}:{tag} not found.")
         return None
 
     def find_image_by_id(self, image_id, accept_missing_image=False):
@@ -555,16 +560,16 @@ class AnsibleDockerClientBase(Client):
         if not image_id:
             return None
 
-        self.log("Find image %s (by ID)" % image_id)
+        self.log(f"Find image {image_id} (by ID)")
         try:
             inspection = self.inspect_image(image_id)
         except NotFound as exc:
             if not accept_missing_image:
-                self.fail("Error inspecting image ID %s - %s" % (image_id, str(exc)))
-            self.log("Image %s not found." % image_id)
+                self.fail(f"Error inspecting image ID {image_id} - {str(exc)}")
+            self.log(f"Image {image_id} not found.")
             return None
         except Exception as exc:
-            self.fail("Error inspecting image ID %s - %s" % (image_id, str(exc)))
+            self.fail(f"Error inspecting image ID {image_id} - {str(exc)}")
         return inspection
 
     def _image_lookup(self, name, tag):
@@ -576,11 +581,11 @@ class AnsibleDockerClientBase(Client):
         try:
             response = self.images(name=name)
         except Exception as exc:
-            self.fail("Error searching for image %s - %s" % (name, str(exc)))
+            self.fail(f"Error searching for image {name} - {str(exc)}")
         images = response
         if tag:
-            lookup = "%s:%s" % (name, tag)
-            lookup_digest = "%s@%s" % (name, tag)
+            lookup = f"{name}:{tag}"
+            lookup_digest = f"{name}@{tag}"
             images = []
             for image in response:
                 tags = image.get('RepoTags')
@@ -601,7 +606,7 @@ class AnsibleDockerClientBase(Client):
         )
         if platform is not None:
             kwargs['platform'] = platform
-        self.log("Pulling image %s:%s" % (name, tag))
+        self.log(f"Pulling image {name}:{tag}")
         old_tag = self.find_image(name, tag)
         try:
             for line in self.pull(name, **kwargs):
@@ -609,13 +614,14 @@ class AnsibleDockerClientBase(Client):
                 if line.get('error'):
                     if line.get('errorDetail'):
                         error_detail = line.get('errorDetail')
-                        self.fail("Error pulling %s - code: %s message: %s" % (name,
-                                                                               error_detail.get('code'),
-                                                                               error_detail.get('message')))
+                        self.fail(
+                            f"Error pulling {name} - code: {error_detail.get('code')} message: {error_detail.get('message')}"
+                        )
+
                     else:
-                        self.fail("Error pulling %s - %s" % (name, line.get('error')))
+                        self.fail(f"Error pulling {name} - {line.get('error')}")
         except Exception as exc:
-            self.fail("Error pulling image %s:%s - %s" % (name, tag, str(exc)))
+            self.fail(f"Error pulling image {name}:{tag} - {str(exc)}")
 
         new_tag = self.find_image(name, tag)
 
@@ -628,8 +634,7 @@ class AnsibleDockerClientBase(Client):
         '''
         if self.docker_py_version < LooseVersion('4.0.0'):
             registry = auth.resolve_repository_name(image)[0]
-            header = auth.get_config_header(self, registry)
-            if header:
+            if header := auth.get_config_header(self, registry):
                 return self._result(self._get(
                     self._url('/distribution/{0}/json', image),
                     headers={'X-Registry-Auth': header}
@@ -648,8 +653,8 @@ class AnsibleDockerClient(AnsibleDockerClientBase):
         # in case client.fail() is called.
         self.fail_results = fail_results or {}
 
-        merged_arg_spec = dict()
-        merged_arg_spec.update(DOCKER_COMMON_ARGS)
+        merged_arg_spec = {}
+        merged_arg_spec |= DOCKER_COMMON_ARGS
         if argument_spec:
             merged_arg_spec.update(argument_spec)
             self.arg_spec = merged_arg_spec
@@ -694,13 +699,12 @@ class AnsibleDockerClient(AnsibleDockerClientBase):
         return self.module.params
 
     def _get_minimal_versions(self, option_minimal_versions, ignore_params=None):
-        self.option_minimal_versions = dict()
+        self.option_minimal_versions = {}
         for option in self.module.argument_spec:
-            if ignore_params is not None:
-                if option in ignore_params:
-                    continue
-            self.option_minimal_versions[option] = dict()
-        self.option_minimal_versions.update(option_minimal_versions)
+            if ignore_params is not None and option in ignore_params:
+                continue
+            self.option_minimal_versions[option] = {}
+        self.option_minimal_versions |= option_minimal_versions
 
         for option, data in self.option_minimal_versions.items():
             # Test whether option is supported, and store result
@@ -722,13 +726,10 @@ class AnsibleDockerClient(AnsibleDockerClientBase):
                         used = self.module.params[option] != self.module.argument_spec[option]['default']
                 if used:
                     # If the option is used, compose error message.
-                    if 'usage_msg' in data:
-                        usg = data['usage_msg']
-                    else:
-                        usg = 'set %s option' % (option, )
+                    usg = data['usage_msg'] if 'usage_msg' in data else f'set {option} option'
                     if not support_docker_api:
                         msg = 'Docker API version is %s. Minimum version required is %s to %s.'
-                        msg = msg % (self.docker_api_version_str, data['docker_api_version'], usg)
+                        msg %= (self.docker_api_version_str, data['docker_api_version'], usg)
                     elif not support_docker_py:
                         msg = "Docker SDK for Python version is %s (%s's Python %s). Minimum version required is %s to %s. "
                         if LooseVersion(data['docker_py_version']) < LooseVersion('2.0.0'):
@@ -740,7 +741,7 @@ class AnsibleDockerClient(AnsibleDockerClientBase):
                         msg = msg % (docker_version, platform.node(), sys.executable, data['docker_py_version'], usg)
                     else:
                         # should not happen
-                        msg = 'Cannot %s with your configuration.' % (usg, )
+                        msg = f'Cannot {usg} with your configuration.'
                     self.fail(msg)
 
     def report_warnings(self, result, warnings_key=None):
@@ -809,7 +810,7 @@ def compare_generic(a, b, method, datatype):
     if method == 'ignore':
         return True
     # If a or b is None:
-    if a is None or b is None:
+    if a is None:
         # If both are None: equality
         if a == b:
             return True
@@ -818,44 +819,38 @@ def compare_generic(a, b, method, datatype):
         if datatype == 'value':
             return False
         # For allow_more_present, allow a to be None
-        if method == 'allow_more_present' and a is None:
+        if method == 'allow_more_present':
             return True
         # Otherwise, the iterable object which is not None must have length 0
         return len(b if a is None else a) == 0
+    elif b is None:
+        # If both are None: equality
+        if a == b:
+            return True
+        # Otherwise, not equal for values, and equal
+        # if the other is empty for set/list/dict
+        return False if datatype == 'value' else len(b if a is None else a) == 0
     # Do proper comparison (both objects not None)
     if datatype == 'value':
         return a == b
     elif datatype == 'list':
         if method == 'strict':
             return a == b
-        else:
-            i = 0
-            for v in a:
-                while i < len(b) and b[i] != v:
-                    i += 1
-                if i == len(b):
-                    return False
+        for i, v in enumerate(a):
+            while i < len(b) and b[i] != v:
                 i += 1
-            return True
+            if i == len(b):
+                return False
+        return True
     elif datatype == 'dict':
-        if method == 'strict':
-            return a == b
-        else:
-            return compare_dict_allow_more_present(a, b)
+        return a == b if method == 'strict' else compare_dict_allow_more_present(a, b)
     elif datatype == 'set':
         set_a = set(a)
         set_b = set(b)
-        if method == 'strict':
-            return set_a == set_b
-        else:
-            return set_b >= set_a
+        return set_a == set_b if method == 'strict' else set_b >= set_a
     elif datatype == 'set(dict)':
         for av in a:
-            found = False
-            for bv in b:
-                if compare_dict_allow_more_present(av, bv):
-                    found = True
-                    break
+            found = any(compare_dict_allow_more_present(av, bv) for bv in b)
             if not found:
                 return False
         if method == 'strict':
@@ -864,11 +859,7 @@ def compare_generic(a, b, method, datatype):
             # We can assume that b has no duplicates (as it is returned by
             # docker), but we don't know for a.
             for bv in b:
-                found = False
-                for av in a:
-                    if compare_dict_allow_more_present(av, bv):
-                        found = True
-                        break
+                found = any(compare_dict_allow_more_present(av, bv) for av in a)
                 if not found:
                     return False
         return True
@@ -896,8 +887,8 @@ class DifferenceTracker(object):
         '''
         Return texts ``before`` and ``after``.
         '''
-        before = dict()
-        after = dict()
+        before = {}
+        after = {}
         for item in self._diff:
             before[item['name']] = item['active']
             after[item['name']] = item['parameter']
@@ -915,11 +906,12 @@ class DifferenceTracker(object):
         '''
         result = []
         for entry in self._diff:
-            item = dict()
-            item[entry['name']] = dict(
-                parameter=entry['parameter'],
-                container=entry['active'],
-            )
+            item = {
+                entry['name']: dict(
+                    parameter=entry['parameter'], container=entry['active']
+                )
+            }
+
             result.append(item)
         return result
 
@@ -927,8 +919,7 @@ class DifferenceTracker(object):
         '''
         Return differences in the docker_container legacy format.
         '''
-        result = [entry['name'] for entry in self._diff]
-        return result
+        return [entry['name'] for entry in self._diff]
 
 
 def clean_dict_booleans_for_docker_api(data, allow_sequences=False):
@@ -948,7 +939,7 @@ def clean_dict_booleans_for_docker_api(data, allow_sequences=False):
         else:
             return str(value)
 
-    result = dict()
+    result = {}
     if data is not None:
         for k, v in data.items():
             result[str(k)] = [sanitize(e) for e in v] if allow_sequences and is_sequence(v) else sanitize(v)
@@ -960,7 +951,7 @@ def convert_duration_to_nanosecond(time_str):
     Return time duration in nanosecond.
     """
     if not isinstance(time_str, str):
-        raise ValueError('Missing unit in duration - %s' % time_str)
+        raise ValueError(f'Missing unit in duration - {time_str}')
 
     regex = re.compile(
         r'^(((?P<hours>\d+)h)?'
@@ -972,20 +963,14 @@ def convert_duration_to_nanosecond(time_str):
     parts = regex.match(time_str)
 
     if not parts:
-        raise ValueError('Invalid time duration - %s' % time_str)
+        raise ValueError(f'Invalid time duration - {time_str}')
 
     parts = parts.groupdict()
-    time_params = {}
-    for (name, value) in parts.items():
-        if value:
-            time_params[name] = int(value)
-
+    time_params = {name: int(value) for name, value in parts.items() if value}
     delta = timedelta(**time_params)
-    time_in_nanoseconds = (
-        delta.microseconds + (delta.seconds + delta.days * 24 * 3600) * 10 ** 6
-    ) * 10 ** 3
-
-    return time_in_nanoseconds
+    return (
+        delta.microseconds + (delta.seconds + delta.days * 24 * 3600) * 10**6
+    ) * 10**3
 
 
 def parse_healthcheck(healthcheck):
@@ -996,7 +981,7 @@ def parse_healthcheck(healthcheck):
     if (not healthcheck) or (not healthcheck.get('test')):
         return None, None
 
-    result = dict()
+    result = {}
 
     # All supported healthcheck parameters
     options = dict(
@@ -1016,17 +1001,13 @@ def parse_healthcheck(healthcheck):
                 # (but have default value None if not specified)
                 continue
             if value in duration_options:
-                time = convert_duration_to_nanosecond(healthcheck.get(value))
-                if time:
+                if time := convert_duration_to_nanosecond(
+                    healthcheck.get(value)
+                ):
                     result[key] = time
             elif healthcheck.get(value):
                 result[key] = healthcheck.get(value)
-                if key == 'test':
-                    if isinstance(result[key], (tuple, list)):
-                        result[key] = [str(e) for e in result[key]]
-                    else:
-                        result[key] = ['CMD-SHELL', str(result[key])]
-                elif key == 'retries':
+                if key == 'retries':
                     try:
                         result[key] = int(result[key])
                     except ValueError:
@@ -1035,16 +1016,18 @@ def parse_healthcheck(healthcheck):
                             'Expected an integer, got "{0}".'.format(result[key])
                         )
 
-    if result['test'] == ['NONE']:
-        # If the user explicitly disables the healthcheck, return None
-        # as the healthcheck object, and set disable_healthcheck to True
-        return None, True
+                elif key == 'test':
+                    result[key] = (
+                        [str(e) for e in result[key]]
+                        if isinstance(result[key], (tuple, list))
+                        else ['CMD-SHELL', str(result[key])]
+                    )
 
-    return result, False
+    return (None, True) if result['test'] == ['NONE'] else (result, False)
 
 
 def omit_none_from_dict(d):
     """
     Return a copy of the dictionary with all keys with value None omitted.
     """
-    return dict((k, v) for (k, v) in d.items() if v is not None)
+    return {k: v for (k, v) in d.items() if v is not None}

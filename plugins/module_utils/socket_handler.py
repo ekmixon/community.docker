@@ -34,10 +34,7 @@ class DockerSocketHandlerBase(object):
         make_unblocking(sock)
 
         self._selectors = selectors
-        if log is not None:
-            self._log = log
-        else:
-            self._log = lambda msg: True
+        self._log = log if log is not None else (lambda msg: True)
         self._paramiko_read_workaround = hasattr(sock, 'send_ready') and 'paramiko' in str(type(sock))
 
         self._sock = sock
@@ -81,14 +78,10 @@ class DockerSocketHandlerBase(object):
             try:
                 data = self._sock.recv(262144)
             except Exception as e:
-                # After calling self._sock.shutdown(), OpenSSL's/urllib3's
-                # WrappedSocket seems to eventually raise ZeroReturnError in
-                # case of EOF
-                if 'OpenSSL.SSL.ZeroReturnError' in str(type(e)):
-                    self._eof = True
-                    return
-                else:
+                if 'OpenSSL.SSL.ZeroReturnError' not in str(type(e)):
                     raise
+                self._eof = True
+                return
         elif PY3 and isinstance(self._sock, getattr(pysocket, 'SocketIO')):
             data = self._sock.read()
         else:
@@ -167,10 +160,13 @@ class DockerSocketHandlerBase(object):
                 if event & self._selectors.EVENT_WRITE != 0:
                     self._write()
         result = len(events)
-        if self._paramiko_read_workaround and len(self._write_buffer) > 0:
-            if self._sock.send_ready():
-                self._write()
-                result += 1
+        if (
+            self._paramiko_read_workaround
+            and len(self._write_buffer) > 0
+            and self._sock.send_ready()
+        ):
+            self._write()
+            result += 1
         return result > 0
 
     def is_eof(self):

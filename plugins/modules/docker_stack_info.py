@@ -64,14 +64,7 @@ def main():
         module.fail_json(msg="Error running docker stack. {0}".format(err),
                          rc=rc, stdout=out, stderr=err)
     else:
-        if out:
-            ret = list(
-                json.loads(outitem)
-                for outitem in out.splitlines())
-
-        else:
-            ret = []
-
+        ret = [json.loads(outitem) for outitem in out.splitlines()] if out else []
         module.exit_json(changed=False,
                          rc=rc,
                          stdout=out,

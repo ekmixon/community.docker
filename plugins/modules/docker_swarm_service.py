@@ -968,32 +968,31 @@ def get_docker_environment(env, env_files):
                 env_dict[name] = str(value)
     if env is not None and isinstance(env, string_types):
         env = env.split(',')
-    if env is not None and isinstance(env, dict):
-        for name, value in env.items():
-            if not isinstance(value, string_types):
-                raise ValueError(
-                    'Non-string value found for env option. '
-                    'Ambiguous env options must be wrapped in quotes to avoid YAML parsing. Key: %s' % name
-                )
-            env_dict[name] = str(value)
-    elif env is not None and isinstance(env, list):
-        for item in env:
-            try:
-                name, value = item.split('=', 1)
-            except ValueError:
-                raise ValueError('Invalid environment variable found in list, needs to be in format KEY=VALUE.')
-            env_dict[name] = value
-    elif env is not None:
-        raise ValueError(
-            'Invalid type for env %s (%s). Only list or dict allowed.' % (env, type(env))
-        )
-    env_list = format_environment(env_dict)
-    if not env_list:
-        if env is not None or env_files is not None:
-            return []
+    if env is not None:
+        if isinstance(env, dict):
+            for name, value in env.items():
+                if not isinstance(value, string_types):
+                    raise ValueError(
+                        'Non-string value found for env option. '
+                        'Ambiguous env options must be wrapped in quotes to avoid YAML parsing. Key: %s' % name
+                    )
+                env_dict[name] = str(value)
+        elif isinstance(env, list):
+            for item in env:
+                try:
+                    name, value = item.split('=', 1)
+                except ValueError:
+                    raise ValueError('Invalid environment variable found in list, needs to be in format KEY=VALUE.')
+                env_dict[name] = value
         else:
-            return None
-    return sorted(env_list)
+            raise ValueError(
+                f'Invalid type for env {env} ({type(env)}). Only list or dict allowed.'
+            )
+
+    if env_list := format_environment(env_dict):
+        return sorted(env_list)
+    else:
+        return [] if env is not None or env_files is not None else None
 
 
 def get_docker_networks(networks, network_ids):
@@ -1031,9 +1030,7 @@ def get_docker_networks(networks, network_ids):
             # Check if any invalid keys left
             if network:
                 invalid_keys = ', '.join(network.keys())
-                raise TypeError(
-                    '%s are not valid keys for the networks option' % invalid_keys
-                )
+                raise TypeError(f'{invalid_keys} are not valid keys for the networks option')
 
         else:
             raise TypeError(
@@ -1043,7 +1040,7 @@ def get_docker_networks(networks, network_ids):
         try:
             parsed_network['id'] = network_ids[network_name]
         except KeyError as e:
-            raise ValueError('Could not find a network named: %s.' % e)
+            raise ValueError(f'Could not find a network named: {e}.')
         parsed_networks.append(parsed_network)
     return parsed_networks or []
 
@@ -1060,8 +1057,7 @@ def get_nanoseconds_from_raw_option(name, value):
             return convert_duration_to_nanosecond(value)
     else:
         raise ValueError(
-            'Invalid type for %s %s (%s). Only string or int allowed.'
-            % (name, value, type(value))
+            f'Invalid type for {name} {value} ({type(value)}). Only string or int allowed.'
         )
 
 
@@ -1081,10 +1077,12 @@ def has_dict_changed(new_dict, old_dict):
         return True
     if not old_dict and new_dict:
         return True
-    defined_options = dict(
-        (option, value) for option, value in new_dict.items()
+    defined_options = {
+        option: value
+        for option, value in new_dict.items()
         if value is not None
-    )
+    }
+
     for option, value in defined_options.items():
         old_value = old_dict.get(option)
         if not value and not old_value:
@@ -1446,7 +1444,7 @@ class DockerService(DockerBaseClass):
             try:
                 memory = human_to_bytes(memory)
             except ValueError as exc:
-                raise Exception('Failed to convert limit_memory to bytes: %s' % exc)
+                raise Exception(f'Failed to convert limit_memory to bytes: {exc}')
         return {
             'limit_cpu': cpus,
             'limit_memory': memory,
@@ -1468,7 +1466,7 @@ class DockerService(DockerBaseClass):
             try:
                 memory = human_to_bytes(memory)
             except ValueError as exc:
-                raise Exception('Failed to convert reserve_memory to bytes: %s' % exc)
+                raise Exception(f'Failed to convert reserve_memory to bytes: {exc}')
         return {
             'reserve_cpu': cpus,
             'reserve_memory': memory,

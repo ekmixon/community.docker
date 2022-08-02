@@ -191,9 +191,7 @@ class DockerFileStore(object):
         self._config_path = config_path
 
         # Make sure we have a minimal config if none is available.
-        self._config = dict(
-            auths=dict()
-        )
+        self._config = dict(auths={})
 
         try:
             # Attempt to read the existing config.
@@ -201,7 +199,7 @@ class DockerFileStore(object):
                 config = json.load(f)
         except (ValueError, IOError):
             # No config found or an invalid config found so we'll ignore it.
-            config = dict()
+            config = {}
 
         # Update our internal config with what ever was loaded.
         self._config.update(config)
@@ -259,7 +257,7 @@ class DockerFileStore(object):
 
         # build up the auth structure
         if 'auths' not in self._config:
-            self._config['auths'] = dict()
+            self._config['auths'] = {}
 
         self._config['auths'][server] = dict(
             auth=auth
@@ -322,8 +320,8 @@ class LoginManager(DockerBaseClass):
             self.fail("Parameter error: the email address appears to be incorrect. Expecting it to match "
                       "/%s/" % (EMAIL_REGEX))
 
-        self.results['actions'].append("Logged into %s" % (self.registry_url))
-        self.log("Log into %s with username %s" % (self.registry_url, self.username))
+        self.results['actions'].append(f"Logged into {self.registry_url}")
+        self.log(f"Log into {self.registry_url} with username {self.username}")
         try:
             response = self.client.login(
                 self.username,
@@ -334,7 +332,10 @@ class LoginManager(DockerBaseClass):
                 dockercfg_path=self.config_path
             )
         except Exception as exc:
-            self.fail("Logging into %s for user %s failed - %s" % (self.registry_url, self.username, to_native(exc)))
+            self.fail(
+                f"Logging into {self.registry_url} for user {self.username} failed - {to_native(exc)}"
+            )
+
 
         # If user is already logged in, then response contains password for user
         if 'password' in response:
@@ -352,7 +353,10 @@ class LoginManager(DockerBaseClass):
                         dockercfg_path=self.config_path
                     )
                 except Exception as exc:
-                    self.fail("Logging into %s for user %s failed - %s" % (self.registry_url, self.username, to_native(exc)))
+                    self.fail(
+                        f"Logging into {self.registry_url} for user {self.username} failed - {to_native(exc)}"
+                    )
+
             response.pop('password', None)
         self.results['login_result'] = response
 
@@ -372,7 +376,7 @@ class LoginManager(DockerBaseClass):
             current = store.get(self.registry_url)
         except CredentialsNotFound:
             # get raises an exception on not found.
-            self.log("Credentials for %s not present, doing nothing." % (self.registry_url))
+            self.log(f"Credentials for {self.registry_url} not present, doing nothing.")
             self.results['changed'] = False
             return
 
@@ -403,9 +407,14 @@ class LoginManager(DockerBaseClass):
         if current['Username'] != self.username or current['Secret'] != self.password or self.reauthorize:
             if not self.check_mode:
                 store.store(self.registry_url, self.username, self.password)
-            self.log("Writing credentials to configured helper %s for %s" % (store.program, self.registry_url))
-            self.results['actions'].append("Wrote credentials to configured helper %s for %s" % (
-                store.program, self.registry_url))
+            self.log(
+                f"Writing credentials to configured helper {store.program} for {self.registry_url}"
+            )
+
+            self.results['actions'].append(
+                f"Wrote credentials to configured helper {store.program} for {self.registry_url}"
+            )
+
             self.results['changed'] = True
 
     def get_credential_store_instance(self, registry, dockercfg_path):
@@ -434,7 +443,7 @@ class LoginManager(DockerBaseClass):
         # Make sure that there is a credential helper before trying to instantiate a
         # Store object.
         if store_name:
-            self.log("Found credential store %s" % store_name)
+            self.log(f"Found credential store {store_name}")
             return Store(store_name, environment=credstore_env)
 
         return DockerFileStore(dockercfg_path)

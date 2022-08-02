@@ -38,7 +38,7 @@ class AnsibleDockerSwarmClient(AnsibleDockerClient):
         try:
             info = self.info()
         except APIError as exc:
-            self.fail("Failed to get node information for %s" % to_native(exc))
+            self.fail(f"Failed to get node information for {to_native(exc)}")
 
         if info:
             json_str = json.dumps(info, ensure_ascii=False)
@@ -72,7 +72,6 @@ class AnsibleDockerSwarmClient(AnsibleDockerClient):
                     return True
                 if swarm_info['Swarm']['LocalNodeState'] in ('active', 'pending', 'locked'):
                     return True
-            return False
         else:
             try:
                 node_info = self.get_node_inspect(node_id=node_id)
@@ -81,7 +80,8 @@ class AnsibleDockerSwarmClient(AnsibleDockerClient):
 
             if node_info['ID'] is not None:
                 return True
-            return False
+
+        return False
 
     def check_if_swarm_manager(self):
         """
@@ -112,9 +112,7 @@ class AnsibleDockerSwarmClient(AnsibleDockerClient):
         :return: True if node is Swarm Worker, False otherwise
         """
 
-        if self.check_if_swarm_node() and not self.check_if_swarm_manager():
-            return True
-        return False
+        return bool(self.check_if_swarm_node() and not self.check_if_swarm_manager())
 
     def check_if_swarm_node_is_down(self, node_id=None, repeat_check=1):
         """
@@ -128,13 +126,11 @@ class AnsibleDockerSwarmClient(AnsibleDockerClient):
             True if node is part of swarm but its state is down, False otherwise
         """
 
-        if repeat_check < 1:
-            repeat_check = 1
-
+        repeat_check = max(repeat_check, 1)
         if node_id is None:
             node_id = self.get_swarm_node_id()
 
-        for retry in range(0, repeat_check):
+        for retry in range(repeat_check):
             if retry > 0:
                 sleep(5)
             node_info = self.get_node_inspect(node_id=node_id)
@@ -161,28 +157,29 @@ class AnsibleDockerSwarmClient(AnsibleDockerClient):
         try:
             node_info = self.inspect_node(node_id=node_id)
         except APIError as exc:
-            if exc.status_code == 503:
-                self.fail("Cannot inspect node: To inspect node execute module on Swarm Manager")
             if exc.status_code == 404:
                 if skip_missing:
                     return None
-            self.fail("Error while reading from Swarm manager: %s" % to_native(exc))
+            elif exc.status_code == 503:
+                self.fail("Cannot inspect node: To inspect node execute module on Swarm Manager")
+            self.fail(f"Error while reading from Swarm manager: {to_native(exc)}")
         except Exception as exc:
-            self.fail("Error inspecting swarm node: %s" % exc)
+            self.fail(f"Error inspecting swarm node: {exc}")
 
         json_str = json.dumps(node_info, ensure_ascii=False)
         node_info = json.loads(json_str)
 
-        if 'ManagerStatus' in node_info:
-            if node_info['ManagerStatus'].get('Leader'):
-                # This is workaround of bug in Docker when in some cases the Leader IP is 0.0.0.0
-                # Check moby/moby#35437 for details
-                count_colons = node_info['ManagerStatus']['Addr'].count(":")
-                if count_colons == 1:
-                    swarm_leader_ip = node_info['ManagerStatus']['Addr'].split(":", 1)[0] or node_info['Status']['Addr']
-                else:
-                    swarm_leader_ip = node_info['Status']['Addr']
-                node_info['Status']['Addr'] = swarm_leader_ip
+        if 'ManagerStatus' in node_info and node_info['ManagerStatus'].get(
+            'Leader'
+        ):
+            # This is workaround of bug in Docker when in some cases the Leader IP is 0.0.0.0
+            # Check moby/moby#35437 for details
+            count_colons = node_info['ManagerStatus']['Addr'].count(":")
+            if count_colons == 1:
+                swarm_leader_ip = node_info['ManagerStatus']['Addr'].split(":", 1)[0] or node_info['Status']['Addr']
+            else:
+                swarm_leader_ip = node_info['Status']['Addr']
+            node_info['Status']['Addr'] = swarm_leader_ip
         return node_info
 
     def get_all_nodes_inspect(self):
@@ -197,9 +194,9 @@ class AnsibleDockerSwarmClient(AnsibleDockerClient):
         except APIError as exc:
             if exc.status_code == 503:
                 self.fail("Cannot inspect node: To inspect node execute module on Swarm Manager")
-            self.fail("Error while reading from Swarm manager: %s" % to_native(exc))
+            self.fail(f"Error while reading from Swarm manager: {to_native(exc)}")
         except Exception as exc:
-            self.fail("Error inspecting swarm node: %s" % exc)
+            self.fail(f"Error inspecting swarm node: {exc}")
 
         json_str = json.dumps(node_info, ensure_ascii=False)
         node_info = json.loads(json_str)
@@ -221,24 +218,25 @@ class AnsibleDockerSwarmClient(AnsibleDockerClient):
         if nodes_inspect is None:
             return None
 
-        if output == 'short':
+        if output == 'long':
             for node in nodes_inspect:
-                nodes_list.append(node['Description']['Hostname'])
-        elif output == 'long':
-            for node in nodes_inspect:
-                node_property = {}
+                node_property = {
+                    'ID': node['ID'],
+                    'Hostname': node['Description']['Hostname'],
+                    'Status': node['Status']['State'],
+                    'Availability': node['Spec']['Availability'],
+                }
 
-                node_property.update({'ID': node['ID']})
-                node_property.update({'Hostname': node['Description']['Hostname']})
-                node_property.update({'Status': node['Status']['State']})
-                node_property.update({'Availability': node['Spec']['Availability']})
+
                 if 'ManagerStatus' in node:
                     if node['ManagerStatus']['Leader'] is True:
-                        node_property.update({'Leader': True})
-                    node_property.update({'ManagerStatus': node['ManagerStatus']['Reachability']})
-                node_property.update({'EngineVersion': node['Description']['Engine']['EngineVersion']})
+                        node_property['Leader'] = True
+                    node_property['ManagerStatus'] = node['ManagerStatus']['Reachability']
+                node_property['EngineVersion'] = node['Description']['Engine']['EngineVersion']
 
                 nodes_list.append(node_property)
+        elif output == 'short':
+            nodes_list.extend(node['Description']['Hostname'] for node in nodes_inspect)
         else:
             return None
 
@@ -265,15 +263,15 @@ class AnsibleDockerSwarmClient(AnsibleDockerClient):
             service_info = self.inspect_service(service_id)
         except NotFound as exc:
             if skip_missing is False:
-                self.fail("Error while reading from Swarm manager: %s" % to_native(exc))
+                self.fail(f"Error while reading from Swarm manager: {to_native(exc)}")
             else:
                 return None
         except APIError as exc:
             if exc.status_code == 503:
                 self.fail("Cannot inspect service: To inspect service execute module on Swarm Manager")
-            self.fail("Error inspecting swarm service: %s" % exc)
+            self.fail(f"Error inspecting swarm service: {exc}")
         except Exception as exc:
-            self.fail("Error inspecting swarm service: %s" % exc)
+            self.fail(f"Error inspecting swarm service: {exc}")
 
         json_str = json.dumps(service_info, ensure_ascii=False)
         service_info = json.loads(json_str)

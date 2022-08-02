@@ -185,7 +185,7 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
         try:
             containers = client.containers(all=True)
         except APIError as exc:
-            raise AnsibleError("Error listing containers: %s" % to_native(exc))
+            raise AnsibleError(f"Error listing containers: {to_native(exc)}")
 
         if add_legacy_groups:
             self.inventory.add_group('running')
@@ -203,7 +203,7 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
             short_id = id[:13]
 
             try:
-                name = container.get('Names', list())[0].lstrip('/')
+                name = container.get('Names', [])[0].lstrip('/')
                 full_name = name
             except IndexError:
                 name = short_id
@@ -214,16 +214,16 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
                 docker_name=name,
                 docker_short_id=short_id
             )
-            full_facts = dict()
+            full_facts = {}
 
             try:
                 inspect = client.inspect_container(id)
             except APIError as exc:
-                raise AnsibleError("Error inspecting container %s - %s" % (name, str(exc)))
+                raise AnsibleError(f"Error inspecting container {name} - {str(exc)}")
 
-            state = inspect.get('State') or dict()
-            config = inspect.get('Config') or dict()
-            labels = config.get('Labels') or dict()
+            state = inspect.get('State') or {}
+            config = inspect.get('Config') or {}
+            labels = config.get('Labels') or {}
 
             running = state.get('Running')
 
@@ -233,15 +233,13 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
                 self.inventory.add_group('image_{0}'.format(image_name))
                 self.inventory.add_host(name, group='image_{0}'.format(image_name))
 
-            stack_name = labels.get('com.docker.stack.namespace')
-            if stack_name:
+            if stack_name := labels.get('com.docker.stack.namespace'):
                 full_facts['docker_stack'] = stack_name
                 if add_legacy_groups:
                     self.inventory.add_group('stack_{0}'.format(stack_name))
                     self.inventory.add_host(name, group='stack_{0}'.format(stack_name))
 
-            service_name = labels.get('com.docker.swarm.service.name')
-            if service_name:
+            if service_name := labels.get('com.docker.swarm.service.name'):
                 full_facts['docker_service'] = service_name
                 if add_legacy_groups:
                     self.inventory.add_group('service_{0}'.format(service_name))
@@ -253,36 +251,39 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
                     # Lookup the public facing port Nat'ed to ssh port.
                     port = client.port(container, ssh_port)[0]
                 except (IndexError, AttributeError, TypeError):
-                    port = dict()
+                    port = {}
 
                 try:
                     ip = default_ip if port['HostIp'] == '0.0.0.0' else port['HostIp']
                 except KeyError:
                     ip = ''
 
-                facts.update(dict(
+                facts |= dict(
                     ansible_ssh_host=ip,
                     ansible_ssh_port=port.get('HostPort', 0),
-                ))
+                )
+
             elif connection_type == 'docker-cli':
-                facts.update(dict(
+                facts |= dict(
                     ansible_host=full_name,
                     ansible_connection='community.docker.docker',
-                ))
+                )
+
             elif connection_type == 'docker-api':
-                facts.update(dict(
+                facts |= dict(
                     ansible_host=full_name,
                     ansible_connection='community.docker.docker_api',
-                ))
-                facts.update(extra_facts)
+                )
 
-            full_facts.update(facts)
+                facts |= extra_facts
+
+            full_facts |= facts
             for key, value in inspect.items():
                 fact_key = self._slugify(key)
                 full_facts[fact_key] = value
 
             if verbose_output:
-                facts.update(full_facts)
+                facts |= full_facts
 
             for key, value in facts.items():
                 self.inventory.set_variable(name, key, value)

@@ -160,7 +160,10 @@ class Connection(ConnectionBase):
 
         cmd, cmd_output, err, returncode = self._new_docker_version()
         if returncode:
-            raise AnsibleError('Docker version check (%s) failed: %s' % (to_native(cmd), to_native(err)))
+            raise AnsibleError(
+                f'Docker version check ({to_native(cmd)}) failed: {to_native(err)}'
+            )
+
 
         return self._sanitize_version(to_text(cmd_output, errors='surrogate_or_strict'))
 
@@ -173,7 +176,10 @@ class Connection(ConnectionBase):
         out = to_text(out, errors='surrogate_or_strict')
 
         if p.returncode != 0:
-            display.warning(u'unable to retrieve default user from docker container: %s %s' % (out, to_text(err)))
+            display.warning(
+                f'unable to retrieve default user from docker container: {out} {to_text(err)}'
+            )
+
             return None
 
         # The default exec user is root, unless it was changed in the Dockerfile with USER
@@ -291,12 +297,17 @@ class Connection(ConnectionBase):
     def put_file(self, in_path, out_path):
         """ Transfer a file from local to docker container """
         super(Connection, self).put_file(in_path, out_path)
-        display.vvv("PUT %s TO %s" % (in_path, out_path), host=self._play_context.remote_addr)
+        display.vvv(
+            f"PUT {in_path} TO {out_path}", host=self._play_context.remote_addr
+        )
+
 
         out_path = self._prefix_login_path(out_path)
         if not os.path.exists(to_bytes(in_path, errors='surrogate_or_strict')):
             raise AnsibleFileNotFound(
-                "file or module does not exist: %s" % to_native(in_path))
+                f"file or module does not exist: {to_native(in_path)}"
+            )
+
 
         out_path = shlex_quote(out_path)
         # Older docker doesn't have native support for copying files into
@@ -304,11 +315,15 @@ class Connection(ConnectionBase):
         # Although docker version 1.8 and later provide support, the
         # owner and group of the files are always set to root
         with open(to_bytes(in_path, errors='surrogate_or_strict'), 'rb') as in_file:
-            if not os.fstat(in_file.fileno()).st_size:
-                count = ' count=0'
-            else:
-                count = ''
-            args = self._build_exec_cmd([self._play_context.executable, "-c", "dd of=%s bs=%s%s" % (out_path, BUFSIZE, count)])
+            count = '' if os.fstat(in_file.fileno()).st_size else ' count=0'
+            args = self._build_exec_cmd(
+                [
+                    self._play_context.executable,
+                    "-c",
+                    f"dd of={out_path} bs={BUFSIZE}{count}",
+                ]
+            )
+
             args = [to_bytes(i, errors='surrogate_or_strict') for i in args]
             try:
                 p = subprocess.Popen(args, stdin=in_file,
@@ -324,14 +339,23 @@ class Connection(ConnectionBase):
     def fetch_file(self, in_path, out_path):
         """ Fetch a file from container to local. """
         super(Connection, self).fetch_file(in_path, out_path)
-        display.vvv("FETCH %s TO %s" % (in_path, out_path), host=self._play_context.remote_addr)
+        display.vvv(
+            f"FETCH {in_path} TO {out_path}", host=self._play_context.remote_addr
+        )
+
 
         in_path = self._prefix_login_path(in_path)
         # out_path is the final file path, but docker takes a directory, not a
         # file path
         out_dir = os.path.dirname(out_path)
 
-        args = [self.docker_cmd, "cp", "%s:%s" % (self._play_context.remote_addr, in_path), out_dir]
+        args = [
+            self.docker_cmd,
+            "cp",
+            f"{self._play_context.remote_addr}:{in_path}",
+            out_dir,
+        ]
+
         args = [to_bytes(i, errors='surrogate_or_strict') for i in args]
 
         p = subprocess.Popen(args, stdin=subprocess.PIPE,
@@ -347,7 +371,14 @@ class Connection(ConnectionBase):
         if p.returncode != 0:
             # Older docker doesn't have native support for fetching files command `cp`
             # If `cp` fails, try to use `dd` instead
-            args = self._build_exec_cmd([self._play_context.executable, "-c", "dd if=%s bs=%s" % (in_path, BUFSIZE)])
+            args = self._build_exec_cmd(
+                [
+                    self._play_context.executable,
+                    "-c",
+                    f"dd if={in_path} bs={BUFSIZE}",
+                ]
+            )
+
             args = [to_bytes(i, errors='surrogate_or_strict') for i in args]
             with open(to_bytes(actual_out_path, errors='surrogate_or_strict'), 'wb') as out_file:
                 try:

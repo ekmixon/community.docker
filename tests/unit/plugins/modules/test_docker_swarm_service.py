@@ -462,9 +462,8 @@ def test_get_docker_networks(docker_swarm_service):
         assert network['id'] == network_ids[expected_name]
         if i == 2:
             assert network['aliases'] == ['networkalias1']
-        if i == 3:
+        elif i == 3:
             assert network['aliases'] == ['networkalias2']
-        if i == 3:
             assert 'foo' in network['options']
     # Test missing name
     with pytest.raises(TypeError):

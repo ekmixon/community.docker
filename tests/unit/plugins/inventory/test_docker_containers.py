@@ -84,16 +84,14 @@ LOVING_THARP_SERVICE = {
 
 def create_get_option(options, default=False):
     def get_option(option):
-        if option in options:
-            return options[option]
-        return default
+        return options[option] if option in options else default
 
     return get_option
 
 
 class FakeClient(object):
     def __init__(self, *hosts):
-        self.hosts = dict()
+        self.hosts = {}
         self.list_reply = []
         for host in hosts:
             self.list_reply.append({
@@ -113,8 +111,8 @@ class FakeClient(object):
 
     def port(self, container, port):
         host = self.hosts[container['Id']]
-        network_settings = host.get('NetworkSettings') or dict()
-        ports = network_settings.get('Ports') or dict()
+        network_settings = host.get('NetworkSettings') or {}
+        ports = network_settings.get('Ports') or {}
         return ports.get('{0}/tcp'.format(port)) or []
 
 

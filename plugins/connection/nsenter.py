@@ -128,7 +128,7 @@ class Connection(ConnectionBase):
             try:
                 master, stdin = pty.openpty()
             except (IOError, OSError) as e:
-                display.debug("Unable to open pty: %s" % to_native(e))
+                display.debug(f"Unable to open pty: {to_native(e)}")
 
         p = subprocess.Popen(
             cmd,

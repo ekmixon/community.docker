@@ -239,7 +239,7 @@ class DockerHostManager(DockerBaseClass):
         for docker_object in listed_objects:
             if self.client.module.params[docker_object]:
                 returned_name = docker_object
-                filter_name = docker_object + "_filters"
+                filter_name = f"{docker_object}_filters"
                 filters = clean_dict_booleans_for_docker_api(client.module.params.get(filter_name), True)
                 self.results[returned_name] = self.get_docker_items_list(docker_object, filters)
 
@@ -247,7 +247,7 @@ class DockerHostManager(DockerBaseClass):
         try:
             return self.client.info()
         except APIError as exc:
-            self.client.fail("Error inspecting docker host: %s" % to_native(exc))
+            self.client.fail(f"Error inspecting docker host: {to_native(exc)}")
 
     def get_docker_disk_usage_facts(self):
         try:
@@ -256,7 +256,7 @@ class DockerHostManager(DockerBaseClass):
             else:
                 return dict(LayersSize=self.client.df()['LayersSize'])
         except APIError as exc:
-            self.client.fail("Error inspecting docker host: %s" % to_native(exc))
+            self.client.fail(f"Error inspecting docker host: {to_native(exc)}")
 
     def get_docker_items_list(self, docker_object=None, filters=None, verbose=False):
         items = None
@@ -267,7 +267,7 @@ class DockerHostManager(DockerBaseClass):
         header_images = ['Id', 'RepoTags', 'Created', 'Size']
         header_networks = ['Id', 'Driver', 'Name', 'Scope']
 
-        filter_arg = dict()
+        filter_arg = {}
         if filters:
             filter_arg['filters'] = filters
         try:
@@ -284,16 +284,12 @@ class DockerHostManager(DockerBaseClass):
                              (docker_object, to_native(exc)))
 
         if self.verbose_output:
-            if docker_object != 'volumes':
-                return items
-            else:
-                return items['Volumes']
-
+            return items if docker_object != 'volumes' else items['Volumes']
         if docker_object == 'volumes':
             items = items['Volumes']
 
         for item in items:
-            item_record = dict()
+            item_record = {}
 
             if docker_object == 'containers':
                 for key in header_containers:

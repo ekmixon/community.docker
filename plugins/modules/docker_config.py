@@ -199,12 +199,12 @@ class ConfigManager(DockerBaseClass):
         try:
             configs = self.client.configs(filters={'name': self.name})
         except APIError as exc:
-            self.client.fail("Error accessing config %s: %s" % (self.name, to_native(exc)))
+            self.client.fail(f"Error accessing config {self.name}: {to_native(exc)}")
 
-        for config in configs:
-            if config['Spec']['Name'] == self.name:
-                return config
-        return None
+        return next(
+            (config for config in configs if config['Spec']['Name'] == self.name),
+            None,
+        )
 
     def create_config(self):
         ''' Create a new config '''
@@ -214,13 +214,13 @@ class ConfigManager(DockerBaseClass):
             'ansible_key': self.data_key
         }
         if self.labels:
-            labels.update(self.labels)
+            labels |= self.labels
 
         try:
             if not self.check_mode:
                 config_id = self.client.create_config(self.name, self.data, labels=labels)
         except APIError as exc:
-            self.client.fail("Error creating config: %s" % to_native(exc))
+            self.client.fail(f"Error creating config: {to_native(exc)}")
 
         if isinstance(config_id, dict):
             config_id = config_id['ID']
@@ -229,14 +229,14 @@ class ConfigManager(DockerBaseClass):
 
     def present(self):
         ''' Handles state == 'present', creating or updating the config '''
-        config = self.get_config()
-        if config:
+        if config := self.get_config():
             self.results['config_id'] = config['ID']
-            data_changed = False
             attrs = config.get('Spec', {})
-            if attrs.get('Labels', {}).get('ansible_key'):
-                if attrs['Labels']['ansible_key'] != self.data_key:
-                    data_changed = True
+            data_changed = bool(
+                attrs.get('Labels', {}).get('ansible_key')
+                and attrs['Labels']['ansible_key'] != self.data_key
+            )
+
             labels_changed = not compare_generic(self.labels, attrs.get('Labels'), 'allow_more_present', 'dict')
             if data_changed or labels_changed or self.force:
                 # if something changed or force, delete and re-create the config
@@ -250,13 +250,12 @@ class ConfigManager(DockerBaseClass):
 
     def absent(self):
         ''' Handles state == 'absent', removing the config '''
-        config = self.get_config()
-        if config:
+        if config := self.get_config():
             try:
                 if not self.check_mode:
                     self.client.remove_config(config['ID'])
             except APIError as exc:
-                self.client.fail("Error removing config %s: %s" % (self.name, to_native(exc)))
+                self.client.fail(f"Error removing config {self.name}: {to_native(exc)}")
             self.results['changed'] = True
 
 

@@ -216,10 +216,14 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
                         # This is workaround of bug in Docker when in some cases the Leader IP is 0.0.0.0
                         # Check moby/moby#35437 for details
                         swarm_leader_ip = parse_address(self.node_attrs['ManagerStatus']['Addr'])[0] or \
-                            self.node_attrs['Status']['Addr']
+                                self.node_attrs['Status']['Addr']
                         if self.get_option('include_host_uri'):
-                            self.inventory.set_variable(self.node_attrs['ID'], 'ansible_host_uri',
-                                                        'tcp://' + swarm_leader_ip + ':' + host_uri_port)
+                            self.inventory.set_variable(
+                                self.node_attrs['ID'],
+                                'ansible_host_uri',
+                                f'tcp://{swarm_leader_ip}:{host_uri_port}',
+                            )
+
                         self.inventory.set_variable(self.node_attrs['ID'], 'ansible_host', swarm_leader_ip)
                         self.inventory.add_host(self.node_attrs['ID'], group='leader')
                     else:
@@ -244,8 +248,9 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
                                                self.node_attrs['ID'],
                                                strict=strict)
         except Exception as e:
-            raise AnsibleError('Unable to fetch hosts from Docker swarm API, this was the original exception: %s' %
-                               to_native(e))
+            raise AnsibleError(
+                f'Unable to fetch hosts from Docker swarm API, this was the original exception: {to_native(e)}'
+            )
 
     def verify_file(self, path):
         """Return the possibly of a file being consumable by this plugin."""

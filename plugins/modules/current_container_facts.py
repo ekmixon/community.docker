@@ -64,7 +64,7 @@ from ansible.module_utils.basic import AnsibleModule
 
 
 def main():
-    module = AnsibleModule(dict(), supports_check_mode=True)
+    module = AnsibleModule({}, supports_check_mode=True)
 
     path = '/proc/self/cpuset'
     container_id = ''

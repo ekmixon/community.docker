@@ -360,7 +360,7 @@ class DockerNetworkManager(object):
         }
         self.diff = self.client.module._diff
         self.diff_tracker = DifferenceTracker()
-        self.diff_result = dict()
+        self.diff_result = {}
 
         self.existing_network = self.get_existing_network()
 
@@ -411,16 +411,21 @@ class DockerNetworkManager(object):
                                 active=net.get('Options'))
             else:
                 for key, value in self.parameters.driver_options.items():
-                    if not (key in net['Options']) or value != net['Options'][key]:
-                        differences.add('driver_options.%s' % key,
-                                        parameter=value,
-                                        active=net['Options'].get(key))
+                    if key not in net['Options'] or value != net['Options'][key]:
+                        differences.add(
+                            f'driver_options.{key}',
+                            parameter=value,
+                            active=net['Options'].get(key),
+                        )
 
-        if self.parameters.ipam_driver:
-            if not net.get('IPAM') or net['IPAM']['Driver'] != self.parameters.ipam_driver:
-                differences.add('ipam_driver',
-                                parameter=self.parameters.ipam_driver,
-                                active=net.get('IPAM'))
+
+        if self.parameters.ipam_driver and (
+            not net.get('IPAM')
+            or net['IPAM']['Driver'] != self.parameters.ipam_driver
+        ):
+            differences.add('ipam_driver',
+                            parameter=self.parameters.ipam_driver,
+                            active=net.get('IPAM'))
 
         if self.parameters.ipam_driver_options is not None:
             ipam_driver_options = net['IPAM'].get('Options') or {}
@@ -438,26 +443,33 @@ class DockerNetworkManager(object):
                 # Put network's IPAM config into the same format as module's IPAM config
                 net_ipam_configs = []
                 for net_ipam_config in net['IPAM']['Config']:
-                    config = dict()
-                    for k, v in net_ipam_config.items():
-                        config[normalize_ipam_config_key(k)] = v
+                    config = {normalize_ipam_config_key(k): v for k, v in net_ipam_config.items()}
                     net_ipam_configs.append(config)
                 # Compare lists of dicts as sets of dicts
                 for idx, ipam_config in enumerate(self.parameters.ipam_config):
-                    net_config = dict()
-                    for net_ipam_config in net_ipam_configs:
-                        if dicts_are_essentially_equal(ipam_config, net_ipam_config):
-                            net_config = net_ipam_config
-                            break
+                    net_config = next(
+                        (
+                            net_ipam_config
+                            for net_ipam_config in net_ipam_configs
+                            if dicts_are_essentially_equal(
+                                ipam_config, net_ipam_config
+                            )
+                        ),
+                        {},
+                    )
+
                     for key, value in ipam_config.items():
                         if value is None:
                             # due to recursive argument_spec, all keys are always present
                             # (but have default value None if not specified)
                             continue
                         if value != net_config.get(key):
-                            differences.add('ipam_config[%s].%s' % (idx, key),
-                                            parameter=value,
-                                            active=net_config.get(key))
+                            differences.add(
+                                f'ipam_config[{idx}].{key}',
+                                parameter=value,
+                                active=net_config.get(key),
+                            )
+
 
         if self.parameters.enable_ipv6 is not None and self.parameters.enable_ipv6 != net.get('EnableIPv6', False):
             differences.add('enable_ipv6',
@@ -485,78 +497,87 @@ class DockerNetworkManager(object):
                                 active=net.get('Labels'))
             else:
                 for key, value in self.parameters.labels.items():
-                    if not (key in net['Labels']) or value != net['Labels'][key]:
-                        differences.add('labels.%s' % key,
-                                        parameter=value,
-                                        active=net['Labels'].get(key))
+                    if key not in net['Labels'] or value != net['Labels'][key]:
+                        differences.add(
+                            f'labels.{key}',
+                            parameter=value,
+                            active=net['Labels'].get(key),
+                        )
+
 
         return not differences.empty, differences
 
     def create_network(self):
-        if not self.existing_network:
-            params = dict(
-                driver=self.parameters.driver,
-                options=self.parameters.driver_options,
-            )
+        if self.existing_network:
+            return
+        params = dict(
+            driver=self.parameters.driver,
+            options=self.parameters.driver_options,
+        )
 
-            ipam_pools = []
-            if self.parameters.ipam_config:
-                for ipam_pool in self.parameters.ipam_config:
-                    if LooseVersion(docker_version) >= LooseVersion('2.0.0'):
-                        ipam_pools.append(IPAMPool(**ipam_pool))
-                    else:
-                        ipam_pools.append(utils.create_ipam_pool(**ipam_pool))
-
-            if self.parameters.ipam_driver or self.parameters.ipam_driver_options or ipam_pools:
-                # Only add ipam parameter if a driver was specified or if IPAM parameters
-                # were specified. Leaving this parameter away can significantly speed up
-                # creation; on my machine creation with this option needs ~15 seconds,
-                # and without just a few seconds.
+        ipam_pools = []
+        if self.parameters.ipam_config:
+            for ipam_pool in self.parameters.ipam_config:
                 if LooseVersion(docker_version) >= LooseVersion('2.0.0'):
-                    params['ipam'] = IPAMConfig(driver=self.parameters.ipam_driver,
-                                                pool_configs=ipam_pools,
-                                                options=self.parameters.ipam_driver_options)
+                    ipam_pools.append(IPAMPool(**ipam_pool))
                 else:
-                    params['ipam'] = utils.create_ipam_config(driver=self.parameters.ipam_driver,
-                                                              pool_configs=ipam_pools)
+                    ipam_pools.append(utils.create_ipam_pool(**ipam_pool))
 
-            if self.parameters.enable_ipv6 is not None:
-                params['enable_ipv6'] = self.parameters.enable_ipv6
-            if self.parameters.internal is not None:
-                params['internal'] = self.parameters.internal
-            if self.parameters.scope is not None:
-                params['scope'] = self.parameters.scope
-            if self.parameters.attachable is not None:
-                params['attachable'] = self.parameters.attachable
-            if self.parameters.labels:
-                params['labels'] = self.parameters.labels
+        if self.parameters.ipam_driver or self.parameters.ipam_driver_options or ipam_pools:
+            # Only add ipam parameter if a driver was specified or if IPAM parameters
+            # were specified. Leaving this parameter away can significantly speed up
+            # creation; on my machine creation with this option needs ~15 seconds,
+            # and without just a few seconds.
+            if LooseVersion(docker_version) >= LooseVersion('2.0.0'):
+                params['ipam'] = IPAMConfig(driver=self.parameters.ipam_driver,
+                                            pool_configs=ipam_pools,
+                                            options=self.parameters.ipam_driver_options)
+            else:
+                params['ipam'] = utils.create_ipam_config(driver=self.parameters.ipam_driver,
+                                                          pool_configs=ipam_pools)
 
-            if not self.check_mode:
-                resp = self.client.create_network(self.parameters.name, **params)
-                self.client.report_warnings(resp, ['Warning'])
-                self.existing_network = self.client.get_network(network_id=resp['Id'])
-            self.results['actions'].append("Created network %s with driver %s" % (self.parameters.name, self.parameters.driver))
-            self.results['changed'] = True
+        if self.parameters.enable_ipv6 is not None:
+            params['enable_ipv6'] = self.parameters.enable_ipv6
+        if self.parameters.internal is not None:
+            params['internal'] = self.parameters.internal
+        if self.parameters.scope is not None:
+            params['scope'] = self.parameters.scope
+        if self.parameters.attachable is not None:
+            params['attachable'] = self.parameters.attachable
+        if self.parameters.labels:
+            params['labels'] = self.parameters.labels
+
+        if not self.check_mode:
+            resp = self.client.create_network(self.parameters.name, **params)
+            self.client.report_warnings(resp, ['Warning'])
+            self.existing_network = self.client.get_network(network_id=resp['Id'])
+        self.results['actions'].append(
+            f"Created network {self.parameters.name} with driver {self.parameters.driver}"
+        )
+
+        self.results['changed'] = True
 
     def remove_network(self):
         if self.existing_network:
             self.disconnect_all_containers()
             if not self.check_mode:
                 self.client.remove_network(self.parameters.name)
-            self.results['actions'].append("Removed network %s" % (self.parameters.name,))
+            self.results['actions'].append(f"Removed network {self.parameters.name}")
             self.results['changed'] = True
 
     def is_container_connected(self, container_name):
-        if not self.existing_network:
-            return False
-        return container_name in container_names_in_network(self.existing_network)
+        return (
+            container_name in container_names_in_network(self.existing_network)
+            if self.existing_network
+            else False
+        )
 
     def connect_containers(self):
         for name in self.parameters.connected:
             if not self.is_container_connected(name):
                 if not self.check_mode:
                     self.client.connect_container_to_network(name, self.parameters.name)
-                self.results['actions'].append("Connected container %s" % (name,))
+                self.results['actions'].append(f"Connected container {name}")
                 self.results['changed'] = True
                 self.diff_tracker.add('connected.{0}'.format(name),
                                       parameter=True,
@@ -583,7 +604,7 @@ class DockerNetworkManager(object):
     def disconnect_container(self, container_name):
         if not self.check_mode:
             self.client.disconnect_container_from_network(container_name, self.parameters.name)
-        self.results['actions'].append("Disconnected container %s" % (container_name,))
+        self.results['actions'].append(f"Disconnected container {container_name}")
         self.results['changed'] = True
         self.diff_tracker.add('connected.{0}'.format(container_name),
                               parameter=False,

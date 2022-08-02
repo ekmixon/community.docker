@@ -228,7 +228,7 @@ class DockerSwarmManager(DockerBaseClass):
         for docker_object in listed_objects:
             if self.client.module.params[docker_object]:
                 returned_name = docker_object
-                filter_name = docker_object + "_filters"
+                filter_name = f"{docker_object}_filters"
                 filters = clean_dict_booleans_for_docker_api(client.module.params.get(filter_name))
                 self.results[returned_name] = self.get_docker_items_list(docker_object, filters)
         if self.client.module.params['unlock_key']:
@@ -238,7 +238,7 @@ class DockerSwarmManager(DockerBaseClass):
         try:
             return self.client.inspect_swarm()
         except APIError as exc:
-            self.client.fail("Error inspecting docker swarm: %s" % to_native(exc))
+            self.client.fail(f"Error inspecting docker swarm: {to_native(exc)}")
 
     def get_docker_items_list(self, docker_object=None, filters=None):
         items = None
@@ -259,7 +259,7 @@ class DockerSwarmManager(DockerBaseClass):
             return items
 
         for item in items:
-            item_record = dict()
+            item_record = {}
 
             if docker_object == 'nodes':
                 item_record = self.get_essential_facts_nodes(item)
@@ -275,9 +275,8 @@ class DockerSwarmManager(DockerBaseClass):
 
     @staticmethod
     def get_essential_facts_nodes(item):
-        object_essentials = dict()
+        object_essentials = {'ID': item.get('ID')}
 
-        object_essentials['ID'] = item.get('ID')
         object_essentials['Hostname'] = item['Description']['Hostname']
         object_essentials['Status'] = item['Status']['State']
         object_essentials['Availability'] = item['Spec']['Availability']
@@ -292,14 +291,14 @@ class DockerSwarmManager(DockerBaseClass):
         return object_essentials
 
     def get_essential_facts_tasks(self, item):
-        object_essentials = dict()
+        object_essentials = {
+            'ID': item['ID'],
+            'ContainerID': item['Status']['ContainerStatus']['ContainerID'],
+            'Image': item['Spec']['ContainerSpec']['Image'],
+            'Node': self.client.get_node_name_by_id(item['NodeID']),
+        }
 
-        object_essentials['ID'] = item['ID']
-        # Returning container ID to not trigger another connection to host
-        # Container ID is sufficient to get extended info in other tasks
-        object_essentials['ContainerID'] = item['Status']['ContainerStatus']['ContainerID']
-        object_essentials['Image'] = item['Spec']['ContainerSpec']['Image']
-        object_essentials['Node'] = self.client.get_node_name_by_id(item['NodeID'])
+
         object_essentials['DesiredState'] = item['DesiredState']
         object_essentials['CurrentState'] = item['Status']['State']
         if 'Err' in item['Status']:
@@ -311,10 +310,8 @@ class DockerSwarmManager(DockerBaseClass):
 
     @staticmethod
     def get_essential_facts_services(item):
-        object_essentials = dict()
+        object_essentials = {'ID': item['ID'], 'Name': item['Spec']['Name']}
 
-        object_essentials['ID'] = item['ID']
-        object_essentials['Name'] = item['Spec']['Name']
         if 'Replicated' in item['Spec']['Mode']:
             object_essentials['Mode'] = "Replicated"
             object_essentials['Replicas'] = item['Spec']['Mode']['Replicated']['Replicas']
@@ -372,7 +369,7 @@ def main():
         )
 
         DockerSwarmManager(client, results)
-        results.update(client.fail_results)
+        results |= client.fail_results
         client.module.exit_json(**results)
     except DockerException as e:
         client.fail('An unexpected docker error occurred: {0}'.format(to_native(e)), exception=traceback.format_exc())

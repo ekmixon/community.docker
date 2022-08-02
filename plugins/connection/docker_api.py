@@ -107,7 +107,7 @@ class Connection(ConnectionBase):
         super(Connection, self).__init__(play_context, new_stdin, *args, **kwargs)
 
         self.client = None
-        self.ids = dict()
+        self.ids = {}
 
         # Windows uses Powershell modules
         if getattr(self._shell, "_IS_WINDOWS", False):
@@ -155,7 +155,7 @@ class Connection(ConnectionBase):
             host=self._play_context.remote_addr
         )
 
-        need_stdin = True if (in_data is not None) or do_become else False
+        need_stdin = bool((in_data is not None) or do_become)
 
         exec_data = self._call_client(self._play_context, lambda: self.client.exec_create(
             self._play_context.remote_addr,
@@ -236,12 +236,17 @@ class Connection(ConnectionBase):
     def put_file(self, in_path, out_path):
         """ Transfer a file from local to docker container """
         super(Connection, self).put_file(in_path, out_path)
-        display.vvv("PUT %s TO %s" % (in_path, out_path), host=self._play_context.remote_addr)
+        display.vvv(
+            f"PUT {in_path} TO {out_path}", host=self._play_context.remote_addr
+        )
+
 
         out_path = self._prefix_login_path(out_path)
         if not os.path.exists(to_bytes(in_path, errors='surrogate_or_strict')):
             raise AnsibleFileNotFound(
-                "file or module does not exist: %s" % to_native(in_path))
+                f"file or module does not exist: {to_native(in_path)}"
+            )
+
 
         if self.actual_user not in self.ids:
             dummy, ids, dummy = self.exec_command(b'id -u && id -g')
@@ -299,7 +304,10 @@ class Connection(ConnectionBase):
     def fetch_file(self, in_path, out_path):
         """ Fetch a file from container to local. """
         super(Connection, self).fetch_file(in_path, out_path)
-        display.vvv("FETCH %s TO %s" % (in_path, out_path), host=self._play_context.remote_addr)
+        display.vvv(
+            f"FETCH {in_path} TO {out_path}", host=self._play_context.remote_addr
+        )
+
 
         in_path = self._prefix_login_path(in_path)
         b_out_path = to_bytes(out_path, errors='surrogate_or_strict')
